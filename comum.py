@@ -7,6 +7,9 @@ FORMATO_PACOTE = "!BQQQ"
 TIPO_DESCOBERTA = 0
 TIPO_REQUISICAO = 1
 TIPO_ACK = 2
+TIPO_NOVO_SERVIDOR = 3
+
+PORTA_LIDER_INICIAL = 12345
 
 def empacotar(tipo, id_req, num_req, valor):
     return struct.pack(FORMATO_PACOTE, tipo, id_req, num_req, valor)

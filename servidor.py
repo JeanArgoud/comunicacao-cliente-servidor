@@ -15,16 +15,46 @@ class ServidorSoma:
         self.num_reqs = 0
         self.clientes = {}
         self.lider = lider
+        self.servidores = []
+
+    def sincronizar_servidores(self):
+        pacote = empacotar(TIPO_NOVO_SERVIDOR, 0, 0, 0)
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        self.sock.settimeout(2)
+        self.sock.sendto(pacote, ('<broadcast>', PORTA_LIDER_INICIAL))
+        try:
+            data, addr = self.sock.recvfrom(1024)
+            tipo, _, _, _ = desempacotar(data)
+            if tipo == TIPO_ACK:
+                self.servidores.append(addr)
+                log_servidor(f"servidor {addr[0]} encontrado")
+            else:
+                log_servidor(f"servidor {addr[0]} enviou um pacote errado")
+        except socket.timeout:
+            log_servidor("servidor nao encontrado")
+            sys.exit(1)
+        self.sock.settimeout(None)
 
     def iniciar(self):
+        if not self.lider:
+            self.sincronizar_servidores()
+
         log_servidor(f"num_reqs 0 total_sum 0")
         while True:
             data, addr = self.sock.recvfrom(1024)
-            tipo, id_req, cont_reqs, valor = desempacotar(data)
+            tipo, id_req, _, valor = desempacotar(data)
 
             if tipo == TIPO_DESCOBERTA:
                 if addr not in self.clientes:
                     self.clientes[addr] = {'last_req': 0, 'last_total_sum': 0}
+                self.sock.sendto(empacotar(TIPO_ACK, 0, 0, 0), addr)
+
+            elif tipo == TIPO_NOVO_SERVIDOR:
+                if addr not in self.servidores:
+                    self.servidores.append(addr)
+                    log_servidor(f"servidor {addr[0]} registrado")
+                else:
+                    log_servidor(f"servidor {addr[0]} foi religado")
                 self.sock.sendto(empacotar(TIPO_ACK, 0, 0, 0), addr)
 
             elif tipo == TIPO_REQUISICAO:
@@ -48,7 +78,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     lider = False
-    if int(sys.argv[1]) == 12345:
+    if int(sys.argv[1]) == PORTA_LIDER_INICIAL:
         lider = True
         print("Eu sou o líder!")
 
