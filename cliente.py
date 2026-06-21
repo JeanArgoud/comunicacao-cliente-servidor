@@ -17,7 +17,7 @@ class ClienteSoma:
         self.id_atual = 1
 
     def descobrir_servidor(self):
-        pacote = empacotar(TIPO_DESCOBERTA, 0, 0, 0)
+        pacote = empacotar(TIPO_DESCOBERTA, 0, 0, 0, 0)
         while not self.servidor_addr:
             try:
                 self.sock.sendto(pacote, ('<broadcast>', self.porta))
@@ -28,13 +28,13 @@ class ClienteSoma:
                 continue
 
     def enviar_com_confirmacao(self, valor):
-        pacote = empacotar(TIPO_REQUISICAO, self.id_atual, self.id_atual, valor)
+        pacote = empacotar(TIPO_REQUISICAO, self.id_atual, self.id_atual, valor, 0)
         while True:
             try:
                 self.sock.sendto(pacote, self.servidor_addr)
                 data, _ = self.sock.recvfrom(1024)
-                _, id_ack, num_reqs, soma_total = desempacotar(data)
-                
+                _, id_ack, num_reqs, _, soma_total = desempacotar(data)
+
                 if id_ack == self.id_atual:
                     log_cliente(f"server {self.servidor_addr[0]} id_req {self.id_atual} value {valor} num_reqs {num_reqs} total_sum {soma_total}")
                     self.id_atual += 1
