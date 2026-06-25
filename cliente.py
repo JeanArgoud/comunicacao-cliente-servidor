@@ -74,11 +74,6 @@ class ClienteSoma:
         sock_bc.close()
 
     def enviar_com_confirmacao(self, valor):
-        """
-        Envia para PORTA_SERVICO no IP do líder atual.
-        Se o líder mudar, _escutar_coordenador atualiza self.ip_lider
-        e o próximo reenvio já vai para o novo líder.
-        """
         self.confirmado.clear()
         pacote = empacotar(TIPO_REQUISICAO, self.id_atual, self.id_atual, valor, 0)
 
@@ -99,51 +94,140 @@ class ClienteSoma:
         self.id_atual += 1
 
 
-def thread_leitura(cliente):
+def thread_leitura_interativo(cliente):
+    """Modo interativo: envia cada número imediatamente ao pressionar Enter."""
     print(
         f"Cliente conectado ao líder em {cliente.ip_lider}:{PORTA_SERVICO}\n"
         f"(O IP é atualizado automaticamente se o líder mudar)\n"
-        "Digite os números inteiros que deseja somar:",
+        "Modo interativo — digite um número por linha e pressione Enter para enviar.\n"
+        "Pressione Ctrl+C ou Ctrl+D para sair.",
         flush=True,
     )
-    acumulado_local = 0
-    linhas_processadas = 0
-    TAMANHO_LOTE = 1000
     while True:
         try:
-            linha = input()
+            linha = input("> ")
             if not linha.strip():
                 continue
-            acumulado_local += int(linha)
-            linhas_processadas += 1
-            
-           
-            if linhas_processadas % TAMANHO_LOTE == 0:
-                cliente.enviar_com_confirmacao(acumulado_local)
-                acumulado_local = 0
+            valor = int(linha)
+            cliente.enviar_com_confirmacao(valor)
         except ValueError:
-            print("Digite apenas números inteiros.", flush=True)
-            acumulado_local += int(linha)
-            linhas_processadas += 1
-            
-            
-            if linhas_processadas % TAMANHO_LOTE == 0:
-                cliente.enviar_com_confirmacao(acumulado_local)
-                acumulado_local = 0
-            break
+            print("Entrada inválida — digite apenas números inteiros.", flush=True)
         except (KeyboardInterrupt, EOFError):
+            print("\nEncerrando.", flush=True)
             break
+
+
+def _ler_stream(cliente, stream, nome, tamanho_lote):
+    """Lê um stream (arquivo aberto ou stdin) em lotes e envia ao servidor."""
+    acumulado = 0
+    lidos = 0
+    erros = 0
+    try:
+        for linha in stream:
+            linha = linha.strip()
+            if not linha:
+                continue
+            try:
+                acumulado += int(linha)
+                lidos += 1
+                if lidos % tamanho_lote == 0:
+                    cliente.enviar_com_confirmacao(acumulado)
+                    acumulado = 0
+            except ValueError:
+                erros += 1
+                print(f"[AVISO] Linha ignorada (não é inteiro): '{linha}'", flush=True)
+    except (KeyboardInterrupt, EOFError):
+        print(f"\nInterrompido durante '{nome}'. Encerrando.", flush=True)
+        if acumulado != 0:
+            cliente.enviar_com_confirmacao(acumulado)
+        raise
+
+    if acumulado != 0:
+        cliente.enviar_com_confirmacao(acumulado)
+
+    print(
+        f"'{nome}' concluído. {lidos} números lidos, {erros} linhas ignoradas.\n"
+        f"Total no servidor até agora: {cliente.total_sum}",
+        flush=True,
+    )
+
+
+def thread_leitura_arquivo(cliente, caminho, tamanho_lote=1000):
+    """Modo arquivo: abre o arquivo e delega para _ler_stream."""
+    print(
+        f"Cliente conectado ao líder em {cliente.ip_lider}:{PORTA_SERVICO}\n"
+        f"Modo arquivo — lendo '{caminho}' em lotes de {tamanho_lote}.",
+        flush=True,
+    )
+    try:
+        with open(caminho, 'r') as f:
+            _ler_stream(cliente, f, caminho, tamanho_lote)
+    except FileNotFoundError:
+        print(f"[ERRO] Arquivo não encontrado: '{caminho}'", flush=True)
+
+    print("Entrando no modo interativo — Ctrl+C ou Ctrl+D para sair.", flush=True)
+
+
+def thread_leitura_stdin(cliente, tamanho_lote=1000):
+    """
+    Modo stdin: usado quando o cliente recebe entrada redirecionada (< arquivo.txt).
+    Lê sys.stdin em lotes. Não entra no modo interativo pois o terminal não está disponível.
+    """
+    print(
+        f"Cliente conectado ao líder em {cliente.ip_lider}:{PORTA_SERVICO}\n"
+        f"Modo stdin — lendo entrada redirecionada em lotes de {tamanho_lote}.",
+        flush=True,
+    )
+    _ler_stream(cliente, sys.stdin, "stdin", tamanho_lote)
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print(f"Uso: python3 {sys.argv[0]} <ip_do_lider>")
-        print(f"  Exemplo (mesma máquina): python3 {sys.argv[0]} 127.0.0.1")
-        print(f"  Exemplo (rede local):    python3 {sys.argv[0]} 192.168.1.10")
-        print(f"  Se o líder mudar de máquina, o cliente redireciona automaticamente.")
-        sys.exit(1)
-    c = ClienteSoma(sys.argv[1])
-    t = threading.Thread(target=thread_leitura, args=(c,), daemon=True)
+    import argparse
+    parser = argparse.ArgumentParser(
+        description="Cliente de soma distribuída.",
+        epilog=(
+            "Exemplos:\n"
+            "  python3 cliente.py 127.0.0.1                        # interativo\n"
+            "  python3 cliente.py 127.0.0.1 < numeros.txt          # stdin, lote 1000\n"
+            "  python3 cliente.py 127.0.0.1 --lote 5000 < arq.txt  # stdin, lote 5000\n"
+            "  python3 cliente.py 127.0.0.1 numeros.txt            # arquivo → interativo\n"
+            "  python3 cliente.py 127.0.0.1 numeros.txt --lote 500 # arquivo, lote 500\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument('ip_lider', help="IP do líder atual")
+    parser.add_argument('arquivo', nargs='?', default=None, help="Arquivo de números (opcional)")
+    parser.add_argument('--lote', type=int, default=1000, metavar='N',
+                        help="Números por requisição no modo arquivo/stdin (padrão: 1000)")
+    args = parser.parse_args()
+
+    ip_lider = args.ip_lider
+    arquivo = args.arquivo
+    tamanho_lote = args.lote
+    stdin_redirecionado = not sys.stdin.isatty()
+
+    c = ClienteSoma(ip_lider)
+
+    def sessao(cliente, arquivo, tamanho_lote, stdin_redirecionado):
+        try:
+            if arquivo:
+                # Lê o arquivo em lotes, depois cai no interativo
+                thread_leitura_arquivo(cliente, arquivo, tamanho_lote)
+                thread_leitura_interativo(cliente)
+            elif stdin_redirecionado:
+                # stdin é um pipe/arquivo — usa lotes, sem interativo depois
+                thread_leitura_stdin(cliente, tamanho_lote)
+            else:
+                # Terminal normal — modo interativo puro
+                thread_leitura_interativo(cliente)
+        except (KeyboardInterrupt, EOFError):
+            pass
+
+    t = threading.Thread(
+        target=sessao,
+        args=(c, arquivo, tamanho_lote, stdin_redirecionado),
+        daemon=True,
+    )
     t.start()
     while True:
         time.sleep(1)
