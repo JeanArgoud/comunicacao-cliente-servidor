@@ -118,7 +118,7 @@ def thread_leitura_interativo(cliente):
 
 
 def _ler_stream(cliente, stream, nome, tamanho_lote):
-    """Lê um stream (arquivo aberto ou stdin) em lotes e envia ao servidor."""
+
     acumulado = 0
     lidos = 0
     erros = 0
@@ -169,10 +169,7 @@ def thread_leitura_arquivo(cliente, caminho, tamanho_lote=1000):
 
 
 def thread_leitura_stdin(cliente, tamanho_lote=1000):
-    """
-    Modo stdin: usado quando o cliente recebe entrada redirecionada (< arquivo.txt).
-    Lê sys.stdin em lotes. Não entra no modo interativo pois o terminal não está disponível.
-    """
+
     print(
         f"Cliente conectado ao líder em {cliente.ip_lider}:{PORTA_SERVICO}\n"
         f"Modo stdin — lendo entrada redirecionada em lotes de {tamanho_lote}.",
@@ -211,14 +208,14 @@ if __name__ == "__main__":
     def sessao(cliente, arquivo, tamanho_lote, stdin_redirecionado):
         try:
             if arquivo:
-                # Lê o arquivo em lotes, depois cai no interativo
+              
                 thread_leitura_arquivo(cliente, arquivo, tamanho_lote)
                 thread_leitura_interativo(cliente)
             elif stdin_redirecionado:
-                # stdin é um pipe/arquivo — usa lotes, sem interativo depois
+        
                 thread_leitura_stdin(cliente, tamanho_lote)
             else:
-                # Terminal normal — modo interativo puro
+        
                 thread_leitura_interativo(cliente)
         except (KeyboardInterrupt, EOFError):
             pass
