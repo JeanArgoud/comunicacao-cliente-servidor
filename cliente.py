@@ -106,14 +106,31 @@ def thread_leitura(cliente):
         "Digite os números inteiros que deseja somar:",
         flush=True,
     )
+    acumulado_local = 0
+    linhas_processadas = 0
+    TAMANHO_LOTE = 1000
     while True:
         try:
             linha = input()
             if not linha.strip():
                 continue
-            cliente.enviar_com_confirmacao(int(linha))
+            acumulado_local += int(linha)
+            linhas_processadas += 1
+            
+           
+            if linhas_processadas % TAMANHO_LOTE == 0:
+                cliente.enviar_com_confirmacao(acumulado_local)
+                acumulado_local = 0
         except ValueError:
             print("Digite apenas números inteiros.", flush=True)
+            acumulado_local += int(linha)
+            linhas_processadas += 1
+            
+            
+            if linhas_processadas % TAMANHO_LOTE == 0:
+                cliente.enviar_com_confirmacao(acumulado_local)
+                acumulado_local = 0
+            break
         except (KeyboardInterrupt, EOFError):
             break
 
