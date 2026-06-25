@@ -144,6 +144,7 @@ class ServidorSoma:
                 eh_lider = self.lider
             if eh_lider:
                 self.enviar_notificacao(TIPO_REPLICACAO)
+                self.enviar_notificacao(TIPO_COORDENADOR)
             time.sleep(0.3)
 
     def checar_queda_do_lider(self):
