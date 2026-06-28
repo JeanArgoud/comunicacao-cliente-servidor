@@ -9,16 +9,22 @@ FORMATO_PACOTE = "!BQQQ"
 FORMATO_REPLICACAO_HEADER = "!BQQH"
 FORMATO_CLIENTE_ADDR = "!IHQ"
 
-# Pacote de redirecionamento: tipo (1B), ip uint32 (4B), porta uint16 (2B)
-FORMATO_REDIRECIONAMENTO = "!BIH"
+# Pacote de endereço (redirecionamento e coordenador): tipo (1B), ip uint32 (4B), porta uint16 (2B)
+FORMATO_ADDR = "!BIH"
 
-TIPO_DESCOBERTA     = 0
-TIPO_REQUISICAO     = 1
-TIPO_ACK            = 2
-TIPO_NOVO_SERVIDOR  = 3
-TIPO_REPLICACAO     = 4
+# Pacote de eleição: tipo (1B), porta uint16 (2B)
+FORMATO_ELEICAO = "!BH"
+
+TIPO_DESCOBERTA       = 0
+TIPO_REQUISICAO       = 1
+TIPO_ACK              = 2
+TIPO_NOVO_SERVIDOR    = 3
+TIPO_REPLICACAO       = 4
 TIPO_REDIRECIONAMENTO = 5
-TIPO_HEARTBEAT      = 6
+TIPO_HEARTBEAT        = 6
+TIPO_ELEICAO          = 7
+TIPO_COORDENADOR      = 8
+TIPO_ACK_ELEICAO      = 9
 
 PORTA_LIDER_INICIAL = 12345
 TAMANHO_BUFFER = 4096
@@ -48,8 +54,34 @@ def desempacotar_replicacao(buffer):
 
 def empacotar_redirecionamento(ip_str, porta):
     ip_int = struct.unpack("!I", socket.inet_aton(ip_str))[0]
-    return struct.pack(FORMATO_REDIRECIONAMENTO, TIPO_REDIRECIONAMENTO, ip_int, porta)
+    return struct.pack(FORMATO_ADDR, TIPO_REDIRECIONAMENTO, ip_int, porta)
 
 def desempacotar_redirecionamento(buffer):
-    _, ip_int, porta = struct.unpack(FORMATO_REDIRECIONAMENTO, buffer)
+    _, ip_int, porta = struct.unpack(FORMATO_ADDR, buffer)
     return socket.inet_ntoa(struct.pack("!I", ip_int)), porta
+
+def empacotar_coordenador(ip_str, porta):
+    ip_int = struct.unpack("!I", socket.inet_aton(ip_str))[0]
+    return struct.pack(FORMATO_ADDR, TIPO_COORDENADOR, ip_int, porta)
+
+def desempacotar_coordenador(buffer):
+    _, ip_int, porta = struct.unpack(FORMATO_ADDR, buffer)
+    return socket.inet_ntoa(struct.pack("!I", ip_int)), porta
+
+def empacotar_eleicao(porta):
+    return struct.pack(FORMATO_ELEICAO, TIPO_ELEICAO, porta)
+
+def desempacotar_eleicao(buffer):
+    _, porta = struct.unpack(FORMATO_ELEICAO, buffer)
+    return porta
+
+def empacotar_ack_eleicao():
+    return struct.pack("!B", TIPO_ACK_ELEICAO)
+
+def get_meu_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(('8.8.8.8', 80))
+        return s.getsockname()[0]
+    finally:
+        s.close()

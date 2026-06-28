@@ -39,6 +39,14 @@ class ClienteSoma:
                     novo_ip, nova_porta = desempacotar_redirecionamento(data)
                     log_cliente(f"redirecionado para {novo_ip}:{nova_porta}")
                     self.servidor_addr = (novo_ip, nova_porta)
+                    # Drena erros ICMP pendentes do servidor antigo (comportamento Windows)
+                    self.sock.settimeout(0)
+                    while True:
+                        try:
+                            self.sock.recvfrom(TAMANHO_BUFFER)
+                        except (BlockingIOError, ConnectionResetError):
+                            break
+                    self.sock.settimeout(0.01)
                     continue
 
                 _, id_ack, num_reqs, soma_total = desempacotar(data)
@@ -49,7 +57,7 @@ class ClienteSoma:
                 else:
                     self.id_atual = id_ack + 1  # O id que o servidor está esperando é anterior ou posterior ao id atual, deve ser corrigido no cliente
                     pacote = empacotar(TIPO_REQUISICAO, self.id_atual, self.id_atual, valor)
-            except socket.timeout:
+            except (socket.timeout, ConnectionResetError):
                 log_cliente(f"reenvio id_req {self.id_atual} value {valor}")
                 continue
 
