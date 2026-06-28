@@ -17,29 +17,40 @@ class ClienteSoma:
         self.id_atual = 1
 
     def descobrir_servidor(self):
-        pacote = empacotar(TIPO_DESCOBERTA, 0, 0, 0, 0)
+        pacote = empacotar(TIPO_DESCOBERTA, 0, 0, 0)
         while not self.servidor_addr:
             try:
                 self.sock.sendto(pacote, ('<broadcast>', self.porta))
-                _, addr = self.sock.recvfrom(1024)
-                self.servidor_addr = addr
-                log_cliente(f"server addr {addr[0]}")
+                data, addr = self.sock.recvfrom(TAMANHO_BUFFER)
+                if data[0] == TIPO_ACK:
+                    self.servidor_addr = addr
+                    log_cliente(f"server addr {addr[0]}:{addr[1]}")
             except socket.timeout:
                 continue
 
     def enviar_com_confirmacao(self, valor):
-        pacote = empacotar(TIPO_REQUISICAO, self.id_atual, self.id_atual, valor, 0)
+        pacote = empacotar(TIPO_REQUISICAO, self.id_atual, self.id_atual, valor)
         while True:
             try:
                 self.sock.sendto(pacote, self.servidor_addr)
-                data, _ = self.sock.recvfrom(1024)
-                _, id_ack, num_reqs, _, soma_total = desempacotar(data)
+                data, _ = self.sock.recvfrom(TAMANHO_BUFFER)
 
+                if data[0] == TIPO_REDIRECIONAMENTO:
+                    novo_ip, nova_porta = desempacotar_redirecionamento(data)
+                    log_cliente(f"redirecionado para {novo_ip}:{nova_porta}")
+                    self.servidor_addr = (novo_ip, nova_porta)
+                    continue
+
+                _, id_ack, num_reqs, soma_total = desempacotar(data)
                 if id_ack == self.id_atual:
                     log_cliente(f"server {self.servidor_addr[0]} id_req {self.id_atual} value {valor} num_reqs {num_reqs} total_sum {soma_total}")
                     self.id_atual += 1
                     break
+                else:
+                    self.id_atual = id_ack + 1  # O id que o servidor está esperando é anterior ou posterior ao id atual, deve ser corrigido no cliente
+                    pacote = empacotar(TIPO_REQUISICAO, self.id_atual, self.id_atual, valor)
             except socket.timeout:
+                log_cliente(f"reenvio id_req {self.id_atual} value {valor}")
                 continue
 
 def thread_leitura(cliente):
@@ -57,4 +68,4 @@ if __name__ == "__main__":
     c.descobrir_servidor()
     t = threading.Thread(target=thread_leitura, args=(c,), daemon=True)
     t.start()
-    t.join() # Aguarda encerramento (CTRL+C ou CTRL+D)
+    t.join()
