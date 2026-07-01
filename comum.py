@@ -26,7 +26,7 @@ TIPO_ELEICAO          = 7
 TIPO_COORDENADOR      = 8
 TIPO_ACK_ELEICAO      = 9
 
-PORTA_LIDER_INICIAL = 12345
+PORTA_DESCOBERTA_SERVIDORES = 8080
 TAMANHO_BUFFER = 4096
 
 def empacotar(tipo, id_req, num_req, valor):

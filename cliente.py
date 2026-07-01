@@ -9,9 +9,9 @@ def log_cliente(msg):
 
 class ClienteSoma:
     def __init__(self, porta):
-        self.porta = porta
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        self.sock.bind(('', porta))
         self.sock.settimeout(0.01) # 10ms conforme especificação
         self.servidor_addr = None
         self.id_atual = 1
@@ -20,7 +20,7 @@ class ClienteSoma:
         pacote = empacotar(TIPO_DESCOBERTA, 0, 0, 0)
         while not self.servidor_addr:
             try:
-                self.sock.sendto(pacote, ('<broadcast>', self.porta))
+                self.sock.sendto(pacote, ('<broadcast>', PORTA_DESCOBERTA_SERVIDORES))
                 data, addr = self.sock.recvfrom(TAMANHO_BUFFER)
                 if data[0] == TIPO_ACK:
                     self.servidor_addr = addr
@@ -30,9 +30,12 @@ class ClienteSoma:
 
     def enviar_com_confirmacao(self, valor):
         pacote = empacotar(TIPO_REQUISICAO, self.id_atual, self.id_atual, valor)
+        precisa_enviar = True
         while True:
             try:
-                self.sock.sendto(pacote, self.servidor_addr)
+                if precisa_enviar:
+                    self.sock.sendto(pacote, self.servidor_addr)
+                precisa_enviar = True
                 data, _ = self.sock.recvfrom(TAMANHO_BUFFER)
 
                 if data[0] == TIPO_REDIRECIONAMENTO:
@@ -55,11 +58,12 @@ class ClienteSoma:
                     self.id_atual += 1
                     break
                 else:
-                    self.id_atual = id_ack + 1  # O id que o servidor está esperando é anterior ou posterior ao id atual, deve ser corrigido no cliente
+                    self.id_atual = id_ack + 1  
                     pacote = empacotar(TIPO_REQUISICAO, self.id_atual, self.id_atual, valor)
-            except (socket.timeout, ConnectionResetError):
-                log_cliente(f"reenvio id_req {self.id_atual} value {valor}")
+            except socket.timeout:
                 continue
+            except ConnectionResetError:
+                precisa_enviar = False  # Aguarda redirect no buffer antes de reenviar
 
 def thread_leitura(cliente):
     while True:
@@ -72,6 +76,9 @@ def thread_leitura(cliente):
             break
 
 if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        print("Uso: python3 cliente.py <porta>")
+        sys.exit(1)
     c = ClienteSoma(int(sys.argv[1]))
     c.descobrir_servidor()
     t = threading.Thread(target=thread_leitura, args=(c,), daemon=True)
