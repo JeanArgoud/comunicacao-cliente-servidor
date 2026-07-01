@@ -24,7 +24,7 @@ class ClienteSoma:
                 data, addr = self.sock.recvfrom(TAMANHO_BUFFER)
                 if data[0] == TIPO_ACK:
                     self.servidor_addr = addr
-                    log_cliente(f"server addr {addr[0]}:{addr[1]}")
+                    #log_cliente(f"server addr {addr[0]}:{addr[1]}")
             except socket.timeout:
                 continue
 
@@ -40,7 +40,7 @@ class ClienteSoma:
 
                 if data[0] == TIPO_REDIRECIONAMENTO:
                     novo_ip, nova_porta = desempacotar_redirecionamento(data)
-                    log_cliente(f"redirecionado para {novo_ip}:{nova_porta}")
+                    #log_cliente(f"redirecionado para {novo_ip}:{nova_porta}")
                     self.servidor_addr = (novo_ip, nova_porta)
                     # Drena erros ICMP pendentes do servidor antigo (comportamento Windows)
                     self.sock.settimeout(0)
@@ -54,7 +54,7 @@ class ClienteSoma:
 
                 _, id_ack, num_reqs, soma_total = desempacotar(data)
                 if id_ack == self.id_atual:
-                    log_cliente(f"server {self.servidor_addr[0]} id_req {self.id_atual} value {valor} num_reqs {num_reqs} total_sum {soma_total}")
+                    log_cliente(f"id_req {self.id_atual} value {valor} num_reqs {num_reqs} total_sum {soma_total}")
                     self.id_atual += 1
                     break
                 else:
