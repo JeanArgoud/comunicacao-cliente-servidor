@@ -6,8 +6,10 @@ FORMATO_PACOTE = "!BQQQ"
 
 # Pacote de replicação: tipo (1B), num_reqs (8B), total_sum (8B), n_clientes (2B)
 # Seguido de n_clientes × (ip uint32 (4B) + porta uint16 (2B) + last_req uint64 (8B))
+# Depois: n_servidores (2B) + n_servidores × (ip uint32 (4B) + porta uint16 (2B))
 FORMATO_REPLICACAO_HEADER = "!BQQH"
 FORMATO_CLIENTE_ADDR = "!IHQ"
+FORMATO_SERVIDOR_ADDR = "!IH"
 
 # Pacote de endereço (redirecionamento e coordenador): tipo (1B), ip uint32 (4B), porta uint16 (2B)
 FORMATO_ADDR = "!BIH"
@@ -35,22 +37,34 @@ def empacotar(tipo, id_req, num_req, valor):
 def desempacotar(buffer):
     return struct.unpack(FORMATO_PACOTE, buffer)
 
-def empacotar_replicacao(num_reqs, total_sum, clientes):
+def empacotar_replicacao(num_reqs, total_sum, clientes, servidores):
     header = struct.pack(FORMATO_REPLICACAO_HEADER, TIPO_REPLICACAO, num_reqs, total_sum, len(clientes))
-    addrs = b''.join(
+    addrs_clientes = b''.join(
         struct.pack(FORMATO_CLIENTE_ADDR, struct.unpack("!I", socket.inet_aton(ip))[0], porta, last_req)
         for (ip, porta), last_req in clientes
     )
-    return header + addrs
+    n_servidores = struct.pack("!H", len(servidores))
+    addrs_servidores = b''.join(
+        struct.pack(FORMATO_SERVIDOR_ADDR, struct.unpack("!I", socket.inet_aton(ip))[0], porta)
+        for ip, porta in servidores
+    )
+    return header + addrs_clientes + n_servidores + addrs_servidores
 
 def desempacotar_replicacao(buffer):
-    _, num_reqs, total_sum, n = struct.unpack(FORMATO_REPLICACAO_HEADER, buffer[:19])
+    _, num_reqs, total_sum, n_clientes = struct.unpack(FORMATO_REPLICACAO_HEADER, buffer[:19])
     clientes = []
-    for i in range(n):
+    for i in range(n_clientes):
         offset = 19 + i * 14
         ip_int, porta, last_req = struct.unpack(FORMATO_CLIENTE_ADDR, buffer[offset:offset + 14])
         clientes.append(((socket.inet_ntoa(struct.pack("!I", ip_int)), porta), last_req))
-    return num_reqs, total_sum, clientes
+    offset_serv = 19 + n_clientes * 14
+    n_servidores, = struct.unpack("!H", buffer[offset_serv:offset_serv + 2])
+    servidores = []
+    for i in range(n_servidores):
+        offset = offset_serv + 2 + i * 6
+        ip_int, porta = struct.unpack(FORMATO_SERVIDOR_ADDR, buffer[offset:offset + 6])
+        servidores.append((socket.inet_ntoa(struct.pack("!I", ip_int)), porta))
+    return num_reqs, total_sum, clientes, servidores
 
 def empacotar_redirecionamento(ip_str, porta):
     ip_int = struct.unpack("!I", socket.inet_aton(ip_str))[0]

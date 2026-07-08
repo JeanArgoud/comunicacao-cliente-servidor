@@ -39,11 +39,15 @@ class ServidorSoma:
         try:
             data, addr = self.sock.recvfrom(TAMANHO_BUFFER)
             if data[0] == TIPO_REPLICACAO:
-                self.num_reqs, self.total_sum, clientes = desempacotar_replicacao(data)
+                self.num_reqs, self.total_sum, clientes, servidores = desempacotar_replicacao(data)
                 for c_addr, last_req in clientes:
                     self.clientes[c_addr] = {'last_req': last_req}
-                self.servidores.append(addr)
-                self.lider = (addr[0], addr[1])
+                meu_addr = (self.meu_ip, self.porta)
+                lider_addr = (addr[0], addr[1])
+                self.servidores = [tuple(s) for s in servidores if tuple(s) != meu_addr]
+                if lider_addr not in self.servidores:
+                    self.servidores.append(lider_addr)
+                self.lider = lider_addr
                 log_servidor(f"servidor {addr[0]}:{addr[1]} encontrado")
             else:
                 log_servidor(f"servidor {addr[0]} enviou um pacote errado")
@@ -74,8 +78,9 @@ class ServidorSoma:
                 else:
                     log_servidor(f"servidor {addr[0]}:{addr[1]} foi religado")
                 clientes = [(c_addr, estado['last_req']) for c_addr, estado in self.clientes.items()]
-                self.sock_discovery.sendto(
-                    empacotar_replicacao(self.num_reqs, self.total_sum, clientes), addr
+                outros_servidores = [s for s in self.servidores if s != addr]
+                self.sock.sendto(
+                    empacotar_replicacao(self.num_reqs, self.total_sum, clientes, outros_servidores), addr
                 )
 
             elif data[0] == TIPO_REQUISICAO:
@@ -87,11 +92,11 @@ class ServidorSoma:
                     self.num_reqs += 1
                     self.total_sum += valor
                     cliente['last_req'] = id_req
+                    self.replicar_dados()
                     log_servidor(f"client {addr[0]} id_req {id_req} value {valor} num_reqs {self.num_reqs} total_sum {self.total_sum}")
                 elif id_req <= cliente['last_req']:
                     log_servidor(f"client {addr[0]} DUPLICATA id_req {id_req} value {valor} num_reqs {self.num_reqs} total_sum {self.total_sum}")
-
-                self.replicar_dados()
+                
                 self.sock_discovery.sendto(empacotar(TIPO_ACK, cliente['last_req'], self.num_reqs, self.total_sum), addr)
 
     def _iniciar_sock_discovery(self):
@@ -102,12 +107,12 @@ class ServidorSoma:
 
     def replicar_dados(self):
         clientes = [(addr, estado['last_req']) for addr, estado in self.clientes.items()]
-        pacote = empacotar_replicacao(self.num_reqs, self.total_sum, clientes)
+        pacote = empacotar_replicacao(self.num_reqs, self.total_sum, clientes, self.servidores)
         for servidor in self.servidores:
             self.sock.sendto(pacote, servidor)
 
     def receber_replicacao(self, data):
-        num_reqs, total_sum, clientes = desempacotar_replicacao(data)
+        num_reqs, total_sum, clientes, servidores = desempacotar_replicacao(data)
         self.num_reqs = num_reqs
         self.total_sum = total_sum
         for c_addr, last_req in clientes:
@@ -115,6 +120,10 @@ class ServidorSoma:
                 self.clientes[c_addr] = {'last_req': last_req}
             else:
                 self.clientes[c_addr]['last_req'] = last_req
+        meu_addr = (self.meu_ip, self.porta)
+        for s in servidores:
+            if s != meu_addr and s not in self.servidores:
+                self.servidores.append(s)
         self.ultimo_heartbeat = time.time()
         log_servidor(f"replicacao recebida num_reqs {self.num_reqs} total_sum {self.total_sum}")
 
@@ -131,12 +140,15 @@ class ServidorSoma:
         log_servidor(f"iniciando eleicao (porta {self.porta})")
 
         superiores = [s for s in self.servidores if s[1] > self.porta]
-        for s in superiores:
-            self.sock.sendto(empacotar_eleicao(self.porta), s)
-
+        print(self.servidores)
+        print(superiores)
+        
         if not superiores:
             self._tornarse_lider()
             return
+        else:
+            for s in superiores:
+                self.sock.sendto(empacotar_eleicao(self.porta), s)
 
         recebeu_ack = self.ack_eleicao.wait(timeout=TIMEOUT_ACK_ELEICAO)
         if not recebeu_ack:
@@ -205,7 +217,9 @@ class ServidorSoma:
 
                 elif tipo == TIPO_COORDENADOR:
                     novo_ip, nova_porta = desempacotar_coordenador(data)
+                    lider_antigo = self.lider
                     self.lider = (novo_ip, nova_porta)
+                    self.servidores = [s for s in self.servidores if s != lider_antigo]
                     self.em_eleicao = False
                     self.ultimo_heartbeat = time.time()
                     log_servidor(f"novo lider: {novo_ip}:{nova_porta}")
