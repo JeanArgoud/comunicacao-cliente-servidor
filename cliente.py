@@ -57,9 +57,12 @@ class ClienteSoma:
                     log_cliente(f"server {self.servidor_addr[0]} id_req {self.id_atual} value {valor} num_reqs {num_reqs} total_sum {soma_total}")
                     self.id_atual += 1
                     break
-                else:
-                    self.id_atual = id_ack + 1  
+                elif id_ack > self.id_atual:
+                    self.id_atual = id_ack + 1
                     pacote = empacotar(TIPO_REQUISICAO, self.id_atual, self.id_atual, valor)
+                else:
+                    precisa_enviar = False
+                    continue
             except socket.timeout:
                 continue
             except ConnectionResetError:
