@@ -140,8 +140,6 @@ class ServidorSoma:
         log_servidor(f"iniciando eleicao (porta {self.porta})")
 
         superiores = [s for s in self.servidores if s[1] > self.porta]
-        print(self.servidores)
-        print(superiores)
         
         if not superiores:
             self._tornarse_lider()
